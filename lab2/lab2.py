@@ -68,6 +68,88 @@ def show_predictions(model, testloader, classes, device, num_images=8):
     accuracy = 100 * correct / len(labels)
     print(f"Точность на этом батче: {accuracy:.2f}%")
 
+def train_one_epoch(model, dataloader, criterion, optimizer, device):
+    model.train()
+    running_loss = 0.0
+    correct = 0
+    total = 0
+
+    for inputs, labels in dataloader:
+        inputs, labels = inputs.to(device), labels.to(device)
+
+        optimizer.zero_grad()
+        outputs = model(inputs)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
+
+        running_loss += loss.item()
+        _, predicted = torch.max(outputs, 1)
+        total += labels.size(0)
+        correct += (predicted == labels).sum().item()
+
+    epoch_loss = running_loss / len(dataloader)
+    epoch_acc = correct / total
+    return epoch_loss, epoch_acc
+
+def evaluate(model, dataloader, criterion, device):
+    model.eval()
+    test_loss = 0.0
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        for inputs, labels in dataloader:
+            inputs, labels = inputs.to(device), labels.to(device)
+            outputs = model(inputs)
+            test_loss += criterion(outputs, labels).item()
+            _, predicted = torch.max(outputs, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+    avg_test_loss = test_loss / len(dataloader)
+    test_acc = correct / total
+    return avg_test_loss, test_acc
+
+def calculate_accuracy(model, dataloader, device):
+    model.eval()
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        for inputs, labels in dataloader:
+            inputs, labels = inputs.to(device), labels.to(device)
+            outputs = model(inputs)
+            _, predicted = torch.max(outputs, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+    return correct / total
+def plot_training_history(train_losses, test_losses, train_accuracies, test_accuracies, save_path='training_results.png'):
+
+    epochs = range(1, len(train_losses) + 1)
+
+    plt.figure(figsize=(14, 5))
+
+    plt.subplot(1, 2, 1)
+    plt.plot(epochs, train_losses, label='Train Loss', marker='o')
+    plt.plot(epochs, test_losses, label='Test Loss', marker='s')
+    plt.title('График ошибки (Loss)')
+    plt.xlabel('Эпоха')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.grid(True)
+
+    plt.subplot(1, 2, 2)
+    plt.plot(epochs, train_accuracies, label='Train Accuracy', marker='o')
+    plt.plot(epochs, test_accuracies, label='Test Accuracy', marker='s', color='orange')
+    plt.title('Точность на обучающем и тестовом наборах')
+    plt.xlabel('Эпоха')
+    plt.ylabel('Accuracy')
+    plt.ylim(0, 1)
+    plt.legend()
+    plt.grid(True)
+
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    print(f"График сохранён как '{save_path}'")
+
 if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Устройство: {device}")
@@ -98,86 +180,29 @@ if __name__ == '__main__':
     train_losses = []
     train_accuracies = []
     test_losses = []
+    test_accuracies = []
 
     print("\nОбучение...\n")
 
     for epoch in range(num_epochs):
-        net.train()
-        running_loss = 0.0
-        correct = 0
-        total = 0
+        train_loss, train_acc = train_one_epoch(net, trainloader, criterion, optimizer, device)
+        test_loss, test_acc = evaluate(net, testloader, criterion, device)
 
-        for inputs, labels in trainloader:
-            inputs, labels = inputs.to(device), labels.to(device)
-
-            optimizer.zero_grad()
-            outputs = net(inputs)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-
-            running_loss += loss.item()
-            _, predicted = torch.max(outputs, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-
-        epoch_loss = running_loss / len(trainloader)
-        epoch_acc = correct / total
-        train_losses.append(epoch_loss)
-        train_accuracies.append(epoch_acc)
-
-        net.eval()
-        test_loss = 0.0
-        with torch.no_grad():
-            for inputs, labels in testloader:
-                inputs, labels = inputs.to(device), labels.to(device)
-                outputs = net(inputs)
-                test_loss += criterion(outputs, labels).item()
-        avg_test_loss = test_loss / len(testloader)
-        test_losses.append(avg_test_loss)
-
+        train_losses.append(train_loss)
+        train_accuracies.append(train_acc)
+        test_losses.append(test_loss)
+        test_accuracies.append(test_acc)
+        
         print(f"Эпоха [{epoch+1}/{num_epochs}] "
-              f"Train Loss: {epoch_loss:.4f} "
-              f"Train Acc: {epoch_acc:.4f} "
-              f"Test Loss: {avg_test_loss:.4f}")
+              f"Train Loss: {train_loss:.4f} "
+              f"Train Acc: {train_acc:.4f} "
+              f"Test Loss: {test_loss:.4f}")
 
-    net.eval()
-    correct = 0
-    total = 0
-    with torch.no_grad():
-        for inputs, labels in testloader:
-            inputs, labels = inputs.to(device), labels.to(device)
-            outputs = net(inputs)
-            _, predicted = torch.max(outputs, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-
-    final_accuracy = correct / total
+    final_accuracy = calculate_accuracy(net, testloader, device)
     print(f"\nТочность: {100 * final_accuracy:.2f}%")
 
-    plt.figure(figsize=(12, 4))
-    plt.subplot(1, 2, 1)
-    plt.plot(train_losses, label='Train Loss', marker='o')
-    plt.plot(test_losses, label='Test Loss', marker='s')
-    plt.title('График ошибки (Loss)')
-    plt.xlabel('Эпоха')
-    plt.ylabel('Loss')
-    plt.legend()
-    plt.grid(True)
-
-    plt.subplot(1, 2, 2)
-    plt.plot(train_accuracies, label='Train Accuracy', color='green', marker='o')
-    plt.title('Точность на обучающем наборе')
-    plt.xlabel('Эпоха')
-    plt.ylabel('Accuracy')
-    plt.ylim(0, 1)
-    plt.legend()
-    plt.grid(True)
-
-    plt.tight_layout()
-    plt.savefig('training_results.png')
-    print("\nГрафик сохранён, как 'training_results.png'")
-
+    plot_training_history(train_losses, test_losses,train_accuracies, test_accuracies,save_path='training_results.png')
+    
     torch.save(net.state_dict(), 'cifar10_cnn.pth')
     print("Модель сохранена, как 'cifar10_cnn.pth'")
 
